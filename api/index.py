@@ -62,48 +62,46 @@ class DocumentUploadResponse(BaseModel):
 # ---------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------
-@app.post("/upload-document/", response_model=DocumentUploadResponse, status_code=status.HTTP_200_OK)
+# @app.post("/upload-document/", response_model=DocumentUploadResponse, status_code=status.HTTP_200_OK)
+# In api/index.py - replace the upload endpoint with this
+from pypdf import PdfReader
+import tempfile, os
+
+@app.post("/upload-document/", response_model=DocumentUploadResponse)
 async def upload_document(file: UploadFile = File(...)):
-    """Upload a PDF and add it to the RAG knowledge base."""
     if not file.filename.endswith(".pdf"):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only PDF files are supported."
-        )
+        raise HTTPException(status_code=400, detail="Only PDF files are supported.")
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
         file_content = await file.read()
         tmp_file.write(file_content)
         temp_file_path = tmp_file.name
 
-    print(f"Received PDF: {file.filename} → temp path: {temp_file_path}")
-
     try:
-        loader = PyPDFLoader(temp_file_path)
-        documents = loader.load()
+        # Use pypdf directly instead of PyPDFLoader
+        reader = PdfReader(temp_file_path)
+        pages_text = [page.extract_text() or "" for page in reader.pages]
+        full_text = "\n\n".join(pages_text)
 
-        total_chunks_added = 0
-        if documents:
-            full_text_content = "\n\n".join([doc.page_content for doc in documents])
-            add_document_to_vectorstore(full_text_content)
-            total_chunks_added = len(documents)
+        if not full_text.strip():
+            raise HTTPException(status_code=400, detail="Could not extract text from PDF.")
+
+        add_document_to_vectorstore(full_text)
 
         return DocumentUploadResponse(
             message=f"PDF '{file.filename}' successfully uploaded and indexed.",
             filename=file.filename,
-            processed_chunks=total_chunks_added
+            processed_chunks=len(reader.pages)
         )
+    except HTTPException:
+        raise
     except Exception as e:
-        print(f"Error processing PDF: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to process PDF: {e}"
-        )
+        print(f"Upload error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to process PDF: {e}")
     finally:
         if os.path.exists(temp_file_path):
             os.remove(temp_file_path)
             print(f"Cleaned up temp file: {temp_file_path}")
-
 
 @app.post("/chat/", response_model=AgentResponse)
 async def chat_with_agent(request: QueryRequest):
