@@ -1,0 +1,13 @@
+.env
+.venv
+__pycache__
+mlruns
+.env
+__pycache__/
+*.pyc
+*.pyo
+.vercel/
+venv/
+.venv/
+data/
+*.pdf
