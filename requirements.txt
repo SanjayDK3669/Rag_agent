@@ -25,5 +25,3 @@ tenacity
 requests
 tiktoken
 typing_extensions
-langchain-pypdf
-langsmith
